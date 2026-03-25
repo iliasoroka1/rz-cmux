@@ -22,6 +22,9 @@ enum BrowserCmd {
         surface: String,
         /// URL to navigate to.
         url: String,
+        /// Wait for page to finish loading after navigating.
+        #[arg(long)]
+        wait: bool,
     },
     /// Take a screenshot of a browser surface.
     Screenshot {
@@ -69,6 +72,19 @@ enum BrowserCmd {
         selector: String,
         /// Text to fill.
         text: String,
+    },
+    /// Wait for the page to finish loading.
+    Wait {
+        /// Browser surface ID.
+        surface: String,
+        /// Timeout in seconds (default 10).
+        #[arg(long, default_value = "10")]
+        timeout: u64,
+    },
+    /// Close this browser surface.
+    Close {
+        /// Browser surface ID.
+        surface: String,
     },
 }
 
@@ -278,6 +294,10 @@ enum Cmd {
     ///   rz browser click <surface_id> "button.submit"
     ///   rz browser fill <surface_id> "input#search" "query text"
     ///   rz browser navigate <surface_id> https://example.com
+    ///   rz browser navigate <surface_id> https://example.com --wait
+    ///   rz browser wait <surface_id>
+    ///   rz browser wait <surface_id> --timeout 5
+    ///   rz browser close <surface_id>
     Browser {
         #[command(subcommand)]
         action: BrowserCmd,
@@ -448,7 +468,7 @@ _Fill in the session's primary objective._
                 cmux::send(&surface_id, &msg)?;
 
                 if let Some(task) = prompt {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    cmux::wait_for_stable_output(&surface_id, 30, 3);
                     cmux::send(&surface_id, &task)?;
                 }
             }
@@ -611,18 +631,24 @@ _Fill in the session's primary objective._
                     let sid = cmux::browser_open(&url, surface.as_deref())?;
                     println!("{sid}");
                 }
-                BrowserCmd::Navigate { surface, url } => {
+                BrowserCmd::Navigate { surface, url, wait } => {
                     cmux::browser_navigate(&surface, &url)?;
+                    if wait {
+                        cmux::browser_wait(&surface, 10)?;
+                    }
                 }
                 BrowserCmd::Screenshot { surface, full_page, output } => {
                     let result = cmux::browser_screenshot(&surface, full_page)?;
                     if let Some(path) = output {
                         // If result has base64 data, decode and write to file
-                        if let Some(data) = result.get("data").and_then(|v| v.as_str()) {
+                        if let Some(data) = result.get("png_base64").and_then(|v| v.as_str()) {
                             use std::io::Write;
                             let bytes = base64_decode(data)?;
                             let mut f = std::fs::File::create(&path)?;
                             f.write_all(&bytes)?;
+                            eprintln!("saved to {path}");
+                        } else if let Some(src) = result.get("path").and_then(|v| v.as_str()) {
+                            std::fs::copy(src, &path)?;
                             eprintln!("saved to {path}");
                         } else {
                             // Write raw JSON result
@@ -658,6 +684,14 @@ _Fill in the session's primary objective._
                 }
                 BrowserCmd::Fill { surface, selector, text } => {
                     cmux::browser_fill(&surface, &selector, &text)?;
+                }
+                BrowserCmd::Wait { surface, timeout } => {
+                    cmux::browser_wait(&surface, timeout)?;
+                    println!("page loaded");
+                }
+                BrowserCmd::Close { surface } => {
+                    cmux::close(&surface)?;
+                    println!("closed {surface}");
                 }
             }
         }
