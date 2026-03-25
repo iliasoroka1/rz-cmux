@@ -2,6 +2,11 @@
 name = "rz-protocol"
 version = "0.1.0"
 edition = "2021"
+description = "@@RZ: wire protocol for inter-agent messaging (transport-agnostic)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/manaflow-ai/rz-cmux"
+keywords = ["agents", "messaging", "terminal", "cmux", "multi-agent"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 eyre = "0.6"
