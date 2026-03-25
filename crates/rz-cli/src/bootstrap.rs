@@ -131,6 +131,50 @@ build checks, or goal reviews. No polling — the hub wakes you up.
 **Audits and reviews.** Write findings to the workspace (`shared/audit-*.md`).
 Send a short summary via message with the file path. Do NOT fix code outside
 your assigned scope — report issues and let the responsible agent fix them.
-This prevents merge conflicts and respects file ownership."#
+This prevents merge conflicts and respects file ownership.
+
+### Browser automation
+
+You can open and control a real browser. Every browser command targets a
+**surface ID** returned by `browser open`.
+
+```bash
+# Open a URL — returns a browser surface ID
+B=$({rz_path} browser open https://example.com)
+
+# Wait for the page to finish loading (always do this after open/navigate)
+{rz_path} browser wait $B
+
+# Navigate to a new URL (--wait blocks until loaded)
+{rz_path} browser navigate $B https://other.com --wait
+
+# Take a screenshot and save as PNG
+{rz_path} browser screenshot $B --output /tmp/page.png
+
+# Get the page source / DOM snapshot
+{rz_path} browser snapshot $B
+
+# Run JavaScript and get the result
+{rz_path} browser eval $B "document.title"
+
+# Click an element by CSS selector
+{rz_path} browser click $B "button.submit"
+
+# Fill a form field
+{rz_path} browser fill $B "input[name='q']" "search term"
+
+# Get current URL
+{rz_path} browser url $B
+
+# Close the browser surface when done
+{rz_path} browser close $B
+```
+
+**Important rules:**
+- Always call `browser wait $B` after `open` or `navigate` before using `eval`, `fill`, or `click`. Navigation is async — the page may not be loaded yet.
+- Use `browser close $B` when finished to keep the workspace tidy.
+- `fill` sets the input value directly. If the site uses React/Vue and needs keyboard events, use `eval` to dispatch an `input` event after filling.
+- Screenshots are saved as real PNG files when you use `--output`. Without `--output`, the raw JSON (including base64) is printed.
+- `snapshot` returns the full page HTML — good for reading content without running JS."#
     ))
 }
