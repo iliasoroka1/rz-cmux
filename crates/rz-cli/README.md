@@ -142,14 +142,16 @@ Each agent writes large outputs to the shared workspace and sends file paths via
 ### Browser
 | Command | Description |
 |---|---|
-| `rz browser open <url>` | Open URL in new browser split |
-| `rz browser navigate <id> <url>` | Navigate existing browser |
-| `rz browser screenshot <id>` | Screenshot (--output file.png) |
-| `rz browser snapshot <id>` | DOM/accessibility tree |
-| `rz browser eval <id> "js"` | Execute JavaScript |
+| `rz browser open <url>` | Open URL in new browser split, returns surface ID |
+| `rz browser wait <id>` | Block until page finishes loading (`--timeout N`, default 10s) |
+| `rz browser navigate <id> <url>` | Navigate existing browser (`--wait` to block until loaded) |
+| `rz browser screenshot <id>` | Screenshot (`--output file.png` saves PNG, `--full-page`) |
+| `rz browser snapshot <id>` | Full page HTML / DOM tree |
+| `rz browser eval <id> "js"` | Execute JavaScript, returns result as JSON |
 | `rz browser url <id>` | Get current URL |
-| `rz browser click <id> "selector"` | Click element |
-| `rz browser fill <id> "sel" "text"` | Fill form field |
+| `rz browser click <id> "selector"` | Click element by CSS selector |
+| `rz browser fill <id> "sel" "text"` | Fill form field by CSS selector |
+| `rz browser close <id>` | Close the browser surface |
 
 ### Notifications
 | Command | Description |
