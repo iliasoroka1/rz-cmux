@@ -217,6 +217,43 @@ enum Cmd {
         wait: Option<u64>,
     },
 
+    /// Send a message and block until the agent replies (MPI-style ask).
+    ///
+    /// Shorthand for `rz send --wait <timeout> <surface_id> "message"`.
+    /// Useful for synchronous request/reply between agents.
+    ///
+    /// Examples:
+    ///   rz ask <surface_id> "what is the status?"
+    ///   rz ask <surface_id> "are you done?" --timeout 120
+    Ask {
+        /// Target surface ID.
+        pane: String,
+        /// Message text.
+        message: String,
+        /// Seconds to wait for a reply (default 60).
+        #[arg(long, default_value = "60")]
+        timeout: u64,
+    },
+
+    /// Collect the last @@RZ: message from each listed agent (MPI-style gather).
+    ///
+    /// Reads the scrollback of every surface ID given and prints the most
+    /// recent protocol message from each — one line per agent. Use this to
+    /// fan-in status from a group of parallel workers without dumping each
+    /// surface individually.
+    ///
+    /// Examples:
+    ///   rz gather <id1> <id2> <id3>
+    ///   rz gather <id1> <id2> --last 3    # last 3 messages from each
+    Gather {
+        /// Surface IDs to gather from.
+        #[arg(required = true)]
+        panes: Vec<String>,
+        /// Number of recent messages to show per agent (default 1).
+        #[arg(long, default_value = "1")]
+        last: usize,
+    },
+
     /// Broadcast a message to all other terminal surfaces.
     Broadcast {
         /// Message text.
@@ -527,6 +564,32 @@ _Fill in the session's primary objective._
 
                 if let Some(timeout_secs) = wait {
                     wait_for_reply(&msg_id, timeout_secs)?;
+                }
+            }
+        }
+
+        Cmd::Ask { pane, message, timeout } => {
+            let from = sender_id(None);
+            let envelope = Envelope::new(
+                &from,
+                MessageKind::Chat { text: message },
+            );
+            let msg_id = envelope.id.clone();
+            cmux::send(&pane, &envelope.encode()?)?;
+            wait_for_reply(&msg_id, timeout)?;
+        }
+
+        Cmd::Gather { panes, last } => {
+            for pane in &panes {
+                let scrollback = cmux::read_text(pane).unwrap_or_default();
+                let messages = log::extract_messages(&scrollback);
+                if messages.is_empty() {
+                    println!("{pane}  (no messages)");
+                } else {
+                    let start = messages.len().saturating_sub(last);
+                    for msg in &messages[start..] {
+                        println!("{pane}  {}", log::format_message(msg));
+                    }
                 }
             }
         }

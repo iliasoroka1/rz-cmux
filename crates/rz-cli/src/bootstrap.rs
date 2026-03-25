@@ -77,15 +77,17 @@ You have `rz` at `{rz_path}`. Your surface ID is `{surface_id}`.
 {rz_path} ping <surface_id>               # check if an agent is alive, measure RTT
 
 # --- Sending messages ---
-{rz_path} send <surface_id> "message"     # send a structured @@RZ: message
-{rz_path} send --wait 30 <surface_id> "?" # block until the agent replies (30s timeout)
-{rz_path} send --ref <msg_id> <surface_id> "reply"  # reply to a specific message (threading)
-{rz_path} broadcast "message"             # send to all other agents at once
+{rz_path} send <surface_id> "message"              # send a structured @@RZ: message
+{rz_path} ask <surface_id> "question"              # send and block until reply (default 60s)
+{rz_path} ask <surface_id> "question" --timeout 120 # same with custom timeout
+{rz_path} send --ref <msg_id> <surface_id> "reply" # reply to a specific message (threading)
+{rz_path} broadcast "message"                      # send to all other agents at once
 
 # --- Reading output ---
 {rz_path} logs <surface_id> --last 50    # read raw terminal scrollback (alias: dump)
 {rz_path} log <surface_id>               # show only @@RZ: protocol messages
-{rz_path} log <surface_id> --last 10     # last 10 protocol messages
+{rz_path} gather <id1> <id2> <id3>       # collect last message from each agent (fan-in)
+{rz_path} gather <id1> <id2> --last 3    # last 3 messages from each
 
 # --- Spawning sub-agents ---
 {rz_path} run claude --name worker -p "do X"   # spawn agent, send it a task (alias: spawn)
