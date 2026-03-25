@@ -8,4 +8,4 @@ pub mod cmux;
 pub mod log;
 pub mod status;
 
-pub use rz_protocol::{Envelope, MessageKind, SENTINEL};
+pub use rz_cmux_protocol::{Envelope, MessageKind, SENTINEL};

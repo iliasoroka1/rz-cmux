@@ -169,18 +169,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "rz-cli"
+name = "rz-cmux"
 version = "0.1.0"
 dependencies = [
  "clap",
  "eyre",
- "rz-protocol",
+ "rz-cmux-protocol",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "rz-protocol"
+name = "rz-cmux-protocol"
 version = "0.1.0"
 dependencies = [
  "eyre",

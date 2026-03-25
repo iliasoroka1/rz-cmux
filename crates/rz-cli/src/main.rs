@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use eyre::{Result, bail};
 
-use rz_protocol::{Envelope, MessageKind};
+use rz_cmux_protocol::{Envelope, MessageKind};
 use rz_cli::{bootstrap, cmux, log, status};
 
 #[derive(Subcommand)]
