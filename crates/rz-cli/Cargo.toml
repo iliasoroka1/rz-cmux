@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Inter-agent messaging and swarm coordination for cmux terminal sessions"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/manaflow-ai/rz-cmux"
+repository = "https://github.com/iliasoroka1/rz-cmux"
 keywords = ["agents", "messaging", "terminal", "cmux", "multi-agent"]
 categories = ["command-line-utilities"]
 

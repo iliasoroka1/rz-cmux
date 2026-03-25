@@ -44,7 +44,7 @@ The result: a team of agents that coordinates, delegates, and delivers — livin
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/rz-cmux
+git clone https://github.com/iliasoroka1/rz-cmux
 cd rz-cmux
 cargo build --release
 cp target/release/rz ~/.local/bin/rz
