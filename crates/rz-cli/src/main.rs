@@ -283,14 +283,17 @@ enum Cmd {
     /// Sends a Ping envelope and waits for a Pong reply (up to --timeout
     /// seconds). Useful for checking if an agent is alive and responsive.
     ///
+    /// Default timeout is 60s — agents may be mid-tool, mid-thought, or
+    /// spawning sub-agents and won't respond instantly.
+    ///
     /// Examples:
     ///   rz ping <surface_id>
-    ///   rz ping <surface_id> --timeout 5
+    ///   rz ping <surface_id> --timeout 120
     Ping {
         /// Target surface ID.
         pane: String,
         /// Seconds to wait for a Pong reply.
-        #[arg(long, default_value = "3")]
+        #[arg(long, default_value = "60")]
         timeout: u64,
     },
 
