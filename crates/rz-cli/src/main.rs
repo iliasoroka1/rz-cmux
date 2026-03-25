@@ -1,107 +1,11 @@
 //! `rz` — inter-agent messaging over cmux.
 
 use clap::{Parser, Subcommand};
-use eyre::{Result, bail};
+use eyre::{Result, WrapErr, bail};
 
 use rz_cmux_protocol::{Envelope, MessageKind};
 use rz_cli::{bootstrap, cmux, log, status};
 
-#[derive(Subcommand)]
-enum BrowserCmd {
-    /// Open a URL in a new browser split.
-    Open {
-        /// URL to open.
-        url: String,
-        /// Surface to split from (defaults to current).
-        #[arg(long)]
-        surface: Option<String>,
-    },
-    /// Navigate an existing browser surface to a URL.
-    ///
-    /// Alias: `goto` (Playwright-style)
-    #[command(alias = "goto")]
-    Navigate {
-        /// Browser surface ID.
-        surface: String,
-        /// URL to navigate to.
-        url: String,
-        /// Wait for page to finish loading after navigating.
-        #[arg(long)]
-        wait: bool,
-    },
-    /// Take a screenshot of a browser surface.
-    ///
-    /// Alias: `snap`
-    #[command(alias = "snap")]
-    Screenshot {
-        /// Browser surface ID.
-        surface: String,
-        /// Capture full page (not just viewport).
-        #[arg(long)]
-        full_page: bool,
-        /// Save to file path instead of printing base64.
-        #[arg(short, long)]
-        output: Option<String>,
-    },
-    /// Get a DOM/accessibility tree snapshot (text representation).
-    ///
-    /// Alias: `content` (Playwright-style: page.content())
-    #[command(alias = "content")]
-    Snapshot {
-        /// Browser surface ID.
-        surface: String,
-        /// Include interactive elements only.
-        #[arg(long)]
-        interactive: bool,
-    },
-    /// Execute JavaScript in the browser and print the result.
-    ///
-    /// Alias: `exec` (familiar execute-style)
-    #[command(alias = "exec")]
-    Eval {
-        /// Browser surface ID.
-        surface: String,
-        /// JavaScript code to execute.
-        script: String,
-    },
-    /// Get the current URL of a browser surface.
-    Url {
-        /// Browser surface ID.
-        surface: String,
-    },
-    /// Click an element by CSS selector.
-    Click {
-        /// Browser surface ID.
-        surface: String,
-        /// CSS selector.
-        selector: String,
-    },
-    /// Fill a form field by CSS selector.
-    Fill {
-        /// Browser surface ID.
-        surface: String,
-        /// CSS selector.
-        selector: String,
-        /// Text to fill.
-        text: String,
-    },
-    /// Wait for the page to finish loading.
-    ///
-    /// Alias: `waitfor` (Playwright-style: waitForLoadState)
-    #[command(alias = "waitfor")]
-    Wait {
-        /// Browser surface ID.
-        surface: String,
-        /// Timeout in seconds (default 10).
-        #[arg(long, default_value = "10")]
-        timeout: u64,
-    },
-    /// Close this browser surface.
-    Close {
-        /// Browser surface ID.
-        surface: String,
-    },
-}
 
 #[derive(Subcommand)]
 enum WorkspaceCmd {
@@ -350,26 +254,26 @@ enum Cmd {
         label: String,
     },
 
-    /// Browser automation commands.
+    /// Browser automation — full passthrough to `cmux browser`.
     ///
-    /// Open, navigate, screenshot, and interact with browser surfaces.
+    /// All arguments are forwarded directly to the cmux browser CLI.
+    /// Run `cmux browser help` to see all available subcommands.
     ///
     /// Examples:
-    ///   rz browser open https://docs.rs
-    ///   rz browser screenshot <surface_id>
-    ///   rz browser snapshot <surface_id>
-    ///   rz browser eval <surface_id> "document.title"
-    ///   rz browser url <surface_id>
-    ///   rz browser click <surface_id> "button.submit"
-    ///   rz browser fill <surface_id> "input#search" "query text"
-    ///   rz browser navigate <surface_id> https://example.com
-    ///   rz browser navigate <surface_id> https://example.com --wait
-    ///   rz browser wait <surface_id>
-    ///   rz browser wait <surface_id> --timeout 5
-    ///   rz browser close <surface_id>
+    ///   rz browser open-split https://example.com
+    ///   rz browser --surface <id> goto https://other.com
+    ///   rz browser --surface <id> snap --out /tmp/page.png
+    ///   rz browser --surface <id> click "button.submit"
+    ///   rz browser --surface <id> type "input#search" "query"
+    ///   rz browser --surface <id> wait --load-state complete
+    ///   rz browser --surface <id> get text
+    ///   rz browser --surface <id> eval "document.title"
+    ///   rz browser --surface <id> scroll --dy 500
+    ///   rz browser --surface <id> find text "Submit"
     Browser {
-        #[command(subcommand)]
-        action: BrowserCmd,
+        /// Arguments passed directly to `cmux browser`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
 
     /// Send a notification to the user.
@@ -720,74 +624,17 @@ _Fill in the session's primary objective._
             eprintln!("timer set for {seconds}s");
         }
 
-        Cmd::Browser { action } => {
-            match action {
-                BrowserCmd::Open { url, surface } => {
-                    let sid = cmux::browser_open(&url, surface.as_deref())?;
-                    println!("{sid}");
-                }
-                BrowserCmd::Navigate { surface, url, wait } => {
-                    cmux::browser_navigate(&surface, &url)?;
-                    if wait {
-                        cmux::browser_wait(&surface, 10)?;
-                    }
-                }
-                BrowserCmd::Screenshot { surface, full_page, output } => {
-                    let result = cmux::browser_screenshot(&surface, full_page)?;
-                    if let Some(path) = output {
-                        // If result has base64 data, decode and write to file
-                        if let Some(data) = result.get("png_base64").and_then(|v| v.as_str()) {
-                            use std::io::Write;
-                            let bytes = base64_decode(data)?;
-                            let mut f = std::fs::File::create(&path)?;
-                            f.write_all(&bytes)?;
-                            eprintln!("saved to {path}");
-                        } else if let Some(src) = result.get("path").and_then(|v| v.as_str()) {
-                            std::fs::copy(src, &path)?;
-                            eprintln!("saved to {path}");
-                        } else {
-                            // Write raw JSON result
-                            std::fs::write(&path, serde_json::to_string_pretty(&result)?)?;
-                            eprintln!("saved to {path}");
-                        }
-                    } else {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    }
-                }
-                BrowserCmd::Snapshot { surface, interactive } => {
-                    let result = cmux::browser_snapshot(&surface, interactive)?;
-                    // Print as text if string, otherwise JSON
-                    if let Some(text) = result.as_str() {
-                        println!("{text}");
-                    } else {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    }
-                }
-                BrowserCmd::Eval { surface, script } => {
-                    let result = cmux::browser_eval(&surface, &script)?;
-                    if let Some(text) = result.as_str() {
-                        println!("{text}");
-                    } else {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    }
-                }
-                BrowserCmd::Url { surface } => {
-                    println!("{}", cmux::browser_url(&surface)?);
-                }
-                BrowserCmd::Click { surface, selector } => {
-                    cmux::browser_click(&surface, &selector)?;
-                }
-                BrowserCmd::Fill { surface, selector, text } => {
-                    cmux::browser_fill(&surface, &selector, &text)?;
-                }
-                BrowserCmd::Wait { surface, timeout } => {
-                    cmux::browser_wait(&surface, timeout)?;
-                    println!("page loaded");
-                }
-                BrowserCmd::Close { surface } => {
-                    cmux::close(&surface)?;
-                    println!("closed {surface}");
-                }
+        Cmd::Browser { args } => {
+            let status = std::process::Command::new("cmux")
+                .arg("browser")
+                .args(&args)
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .wrap_err("failed to run `cmux browser` — is cmux in PATH?")?;
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
             }
         }
 
@@ -822,23 +669,3 @@ fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-fn base64_decode(input: &str) -> Result<Vec<u8>> {
-    // Simple base64 decoder (no external crate needed)
-    let table = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut buf = Vec::with_capacity(input.len() * 3 / 4);
-    let mut acc: u32 = 0;
-    let mut bits: u32 = 0;
-    for &byte in input.as_bytes() {
-        if byte == b'=' || byte == b'\n' || byte == b'\r' { continue; }
-        let val = table.iter().position(|&b| b == byte)
-            .ok_or_else(|| eyre::eyre!("invalid base64"))? as u32;
-        acc = (acc << 6) | val;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            buf.push((acc >> bits) as u8);
-            acc &= (1 << bits) - 1;
-        }
-    }
-    Ok(buf)
-}

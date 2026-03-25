@@ -134,46 +134,52 @@ To reply:
 
 ### Browser automation
 
-You can open and control a real browser. Every browser command targets a
-**surface ID** returned by `browser open`.
+You can open and control a real browser using `cmux browser`. Every browser command targets a
+**surface ID** returned by `cmux browser open`.
 
 ```bash
 # Open a URL — returns a browser surface ID
-B=$({rz_path} browser open https://example.com)
+B=$(cmux browser open https://example.com)
 
-# Wait for the page to finish loading (always do this after open/goto)
-{rz_path} browser waitfor $B              # alias: wait
+# Wait for the page to finish loading (always do this after open/navigate)
+cmux browser wait --surface $B
 
-# Navigate to a new URL (--wait blocks until loaded)
-{rz_path} browser goto $B https://other.com --wait   # alias: navigate
+# Navigate to a new URL
+cmux browser navigate --surface $B --url https://other.com
 
 # Take a screenshot and save as PNG
-{rz_path} browser snap $B --output /tmp/page.png    # alias: screenshot
+cmux browser screenshot --surface $B --output /tmp/page.png
 
-# Get the page source / DOM snapshot
-{rz_path} browser content $B             # alias: snapshot
+# Get the full page HTML / DOM snapshot
+cmux browser snapshot --surface $B
 
 # Run JavaScript and get the result
-{rz_path} browser exec $B "document.title"   # alias: eval
+cmux browser eval --surface $B --script "document.title"
 
 # Click an element by CSS selector
-{rz_path} browser click $B "button.submit"
+cmux browser click --surface $B --selector "button.submit"
 
-# Fill a form field
-{rz_path} browser fill $B "input[name='q']" "search term"
+# Type into a form field
+cmux browser type --surface $B --selector "input[name='q']" --text "search term"
+
+# Scroll the page
+cmux browser scroll --surface $B --direction down --amount 500
 
 # Get current URL
-{rz_path} browser url $B
+cmux browser url --surface $B
+
+# Find elements (returns matching elements info)
+cmux browser find --surface $B --selector "a.nav-link"
 
 # Close the browser surface when done
-{rz_path} browser close $B
+cmux browser close --surface $B
 ```
 
 **Important rules:**
-- Always call `browser wait $B` after `open` or `navigate` before using `eval`, `fill`, or `click`. Navigation is async — the page may not be loaded yet.
-- Use `browser close $B` when finished to keep the workspace tidy.
-- `fill` sets the input value directly. If the site uses React/Vue and needs keyboard events, use `eval` to dispatch an `input` event after filling.
-- Screenshots are saved as real PNG files when you use `--output`. Without `--output`, the raw JSON (including base64) is printed.
-- `snapshot` returns the full page HTML — good for reading content without running JS."#
+- Always call `cmux browser wait --surface $B` after `open` or `navigate` before using `eval`, `click`, or `type`. Navigation is async.
+- Use `cmux browser close --surface $B` when finished to keep the workspace tidy.
+- For React/Vue sites that need keyboard events after typing, use `eval` to dispatch an `input` event.
+- Screenshots are saved as PNG files when you use `--output`. Without `--output`, base64 data is printed.
+- `snapshot` returns full page HTML — good for reading content without running JS."#
     ))
 }
