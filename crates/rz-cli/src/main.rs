@@ -158,6 +158,70 @@ enum Cmd {
         last: usize,
     },
 
+    /// Set progress indicator for this surface (0.0–1.0).
+    ///
+    /// Examples:
+    ///   rz progress 0.5
+    ///   rz progress 0.75 "compiling"
+    Progress {
+        /// Progress value between 0.0 and 1.0.
+        value: f64,
+        /// Optional label shown alongside the progress bar.
+        label: Option<String>,
+    },
+
+    /// Set a status key/value for this surface.
+    ///
+    /// Examples:
+    ///   rz status-set build done
+    ///   rz status-set phase "running tests" --icon spinner --color "#00ff00"
+    #[command(name = "status-set")]
+    StatusSet {
+        /// Status key.
+        key: String,
+        /// Status value.
+        value: String,
+        /// Icon name.
+        #[arg(long)]
+        icon: Option<String>,
+        /// Hex color (e.g. "#ff0000").
+        #[arg(long)]
+        color: Option<String>,
+    },
+
+    /// Clear a status key for this surface.
+    ///
+    /// Examples:
+    ///   rz status-clear build
+    #[command(name = "status-clear")]
+    StatusClear {
+        /// Status key to clear.
+        key: String,
+    },
+
+    /// Fire a named signal.
+    ///
+    /// Examples:
+    ///   rz signal build-done
+    Signal {
+        /// Signal name to fire.
+        name: String,
+    },
+
+    /// Block until a named signal fires.
+    ///
+    /// Examples:
+    ///   rz wait-signal build-done
+    ///   rz wait-signal build-done --timeout 120
+    #[command(name = "wait-signal")]
+    WaitSignal {
+        /// Signal name to wait for.
+        name: String,
+        /// Seconds to wait before timing out.
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
+
     /// Broadcast a message to all other terminal surfaces.
     Broadcast {
         /// Message text.
@@ -496,6 +560,71 @@ _Fill in the session's primary objective._
                     }
                 }
             }
+        }
+
+        Cmd::Progress { value, label } => {
+            let mut cmd = std::process::Command::new("cmux");
+            cmd.arg("set-progress").arg(value.to_string());
+            if let Some(l) = &label { cmd.arg("--label").arg(l); }
+            let status = cmd
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .wrap_err("cmux set-progress failed")?;
+            if !status.success() { std::process::exit(status.code().unwrap_or(1)); }
+        }
+
+        Cmd::StatusSet { key, value, icon, color } => {
+            let mut cmd = std::process::Command::new("cmux");
+            cmd.arg("set-status").arg(&key).arg(&value);
+            if let Some(i) = &icon { cmd.arg("--icon").arg(i); }
+            if let Some(c) = &color { cmd.arg("--color").arg(c); }
+            let status = cmd
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .wrap_err("cmux set-status failed")?;
+            if !status.success() { std::process::exit(status.code().unwrap_or(1)); }
+        }
+
+        Cmd::StatusClear { key } => {
+            let mut cmd = std::process::Command::new("cmux");
+            cmd.arg("clear-status").arg(&key);
+            let status = cmd
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .wrap_err("cmux clear-status failed")?;
+            if !status.success() { std::process::exit(status.code().unwrap_or(1)); }
+        }
+
+        Cmd::Signal { name } => {
+            let status = std::process::Command::new("cmux")
+                .arg("wait-for")
+                .arg("-S")
+                .arg(&name)
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .wrap_err("cmux wait-for -S failed")?;
+            if !status.success() { std::process::exit(status.code().unwrap_or(1)); }
+        }
+
+        Cmd::WaitSignal { name, timeout } => {
+            let mut cmd = std::process::Command::new("cmux");
+            cmd.arg("wait-for").arg(&name);
+            if let Some(t) = timeout { cmd.arg("--timeout").arg(t.to_string()); }
+            let status = cmd
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .wrap_err("cmux wait-for failed")?;
+            if !status.success() { std::process::exit(status.code().unwrap_or(1)); }
         }
 
         Cmd::Broadcast { message, raw } => {

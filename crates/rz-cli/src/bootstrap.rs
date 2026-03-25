@@ -96,6 +96,18 @@ You have `rz` at `{rz_path}`. Your surface ID is `{surface_id}`.
 
 # --- Timers (no polling loops) ---
 {rz_path} timer 60 "check build"         # wake yourself up after 60s with a Timer message
+
+# --- Progress & status (visible in cmux sidebar) ---
+{rz_path} progress 0.5 "halfway done"    # show progress bar (0.0–1.0) in sidebar
+{rz_path} progress 1.0 "complete"        # mark 100% when done
+{rz_path} status-set task "refactoring"  # set a named status key in sidebar
+{rz_path} status-set task "idle" --color 888888
+{rz_path} status-clear task             # clear a status key
+
+# --- Signals (lightweight sync without messaging) ---
+{rz_path} signal coder-done             # fire a named signal (non-blocking)
+{rz_path} wait-signal coder-done        # block until signal fires (default 30s)
+{rz_path} wait-signal coder-done --timeout 120
 ```
 
 {workspace_section}### Active agents
