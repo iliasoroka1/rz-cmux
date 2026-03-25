@@ -146,7 +146,7 @@ B=$({rz_path} browser open https://example.com)
 {rz_path} browser goto $B https://other.com --wait   # alias: navigate
 
 # Take a screenshot and save as PNG
-{rz_path} browser screenshot $B --output /tmp/page.png
+{rz_path} browser snap $B --output /tmp/page.png    # alias: screenshot
 
 # Get the page source / DOM snapshot
 {rz_path} browser content $B             # alias: snapshot

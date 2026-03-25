@@ -30,6 +30,9 @@ enum BrowserCmd {
         wait: bool,
     },
     /// Take a screenshot of a browser surface.
+    ///
+    /// Alias: `snap`
+    #[command(alias = "snap")]
     Screenshot {
         /// Browser surface ID.
         surface: String,
