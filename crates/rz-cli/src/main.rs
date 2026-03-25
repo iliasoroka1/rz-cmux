@@ -376,6 +376,40 @@ enum Cmd {
     Tree,
 }
 
+/// Path to the name→UUID registry file.
+fn names_path() -> Option<std::path::PathBuf> {
+    workspace_path().ok().map(|ws| ws.join("names.json"))
+}
+
+/// Load the name→UUID map from disk.
+fn load_names() -> std::collections::HashMap<String, String> {
+    let Some(path) = names_path() else { return Default::default() };
+    let Ok(data) = std::fs::read_to_string(&path) else { return Default::default() };
+    serde_json::from_str(&data).unwrap_or_default()
+}
+
+/// Save a name→UUID mapping.
+fn save_name(name: &str, uuid: &str) {
+    let Some(path) = names_path() else { return };
+    let mut names = load_names();
+    names.insert(name.to_string(), uuid.to_string());
+    if let Ok(json) = serde_json::to_string_pretty(&names) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+/// Resolve a target: if it looks like a UUID (contains '-'), use as-is.
+/// Otherwise look up in the names registry.
+fn resolve_target(target: &str) -> Result<String> {
+    if target.contains('-') {
+        return Ok(target.to_string());
+    }
+    let names = load_names();
+    names.get(target)
+        .cloned()
+        .ok_or_else(|| eyre::eyre!("unknown agent name '{}' — use a UUID or a name from `rz run --name`", target))
+}
+
 fn rz_path() -> String {
     std::env::current_exe()
         .map(|p| p.display().to_string())
@@ -496,6 +530,11 @@ _Fill in the session's primary objective._
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             let surface_id = cmux::spawn(&command, &arg_refs, name.as_deref())?;
 
+            // Register name→UUID mapping if --name was given.
+            if let Some(ref n) = name {
+                save_name(n, &surface_id);
+            }
+
             if !no_bootstrap {
                 // Phase 2: wait up to `wait` secs for Claude (or any agent)
                 // to appear, then settle 5s before sending bootstrap.
@@ -514,6 +553,7 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Send { pane, message, raw, from, r#ref, wait } => {
+            let pane = resolve_target(&pane)?;
             if raw {
                 if wait.is_some() {
                     bail!("--wait requires protocol mode (cannot use with --raw)");
@@ -537,6 +577,7 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Ask { pane, message, timeout } => {
+            let pane = resolve_target(&pane)?;
             let from = sender_id(None);
             let envelope = Envelope::new(
                 &from,
@@ -548,15 +589,16 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Gather { panes, last } => {
-            for pane in &panes {
-                let scrollback = cmux::read_text(pane).unwrap_or_default();
+            for pane_ref in &panes {
+                let pane = resolve_target(pane_ref).unwrap_or_else(|_| pane_ref.clone());
+                let scrollback = cmux::read_text(&pane).unwrap_or_default();
                 let messages = log::extract_messages(&scrollback);
                 if messages.is_empty() {
-                    println!("{pane}  (no messages)");
+                    println!("{pane_ref}  (no messages)");
                 } else {
                     let start = messages.len().saturating_sub(last);
                     for msg in &messages[start..] {
-                        println!("{pane}  {}", log::format_message(msg));
+                        println!("{pane_ref}  {}", log::format_message(msg));
                     }
                 }
             }
@@ -654,14 +696,20 @@ _Fill in the session's primary objective._
         Cmd::List => {
             let surfaces = cmux::list_surfaces()?;
             let own = cmux::own_surface_id().ok();
-            println!("{:<38} {:<20} {:<38} {:<8}",
-                "SURFACE_ID", "TITLE", "WORKSPACE", "TYPE");
+            let names = load_names();
+            // Build reverse map: uuid → name
+            let uuid_to_name: std::collections::HashMap<&str, &str> = names
+                .iter()
+                .map(|(n, u)| (u.as_str(), n.as_str()))
+                .collect();
+            println!("{:<18} {:<38} {:<20} {:<8}",
+                "NAME", "SURFACE_ID", "TITLE", "TYPE");
             for s in &surfaces {
                 let marker = if own.as_deref() == Some(s.id.as_str()) { " *" } else { "" };
                 let title = if s.title.is_empty() { "-" } else { &s.title };
-                let ws = s.workspace_name.as_deref().unwrap_or(&s.workspace_id);
-                println!("{:<38} {:<20} {:<38} {:<8}{}",
-                    s.id, title, ws, s.surface_type, marker);
+                let name = uuid_to_name.get(s.id.as_str()).unwrap_or(&"-");
+                println!("{:<18} {:<38} {:<20} {:<8}{}",
+                    name, s.id, title, s.surface_type, marker);
             }
         }
 
@@ -672,6 +720,7 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Dump { pane, last } => {
+            let pane = resolve_target(&pane)?;
             let text = cmux::read_text(&pane)?;
             if let Some(n) = last {
                 let lines: Vec<&str> = text.lines().collect();
@@ -685,6 +734,7 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Log { pane, last } => {
+            let pane = resolve_target(&pane)?;
             let scrollback = cmux::read_text(&pane)?;
             let mut messages = log::extract_messages(&scrollback);
             if let Some(n) = last {
@@ -697,10 +747,12 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Close { pane } => {
+            let pane = resolve_target(&pane)?;
             cmux::close(&pane)?;
         }
 
         Cmd::Ping { pane, timeout } => {
+            let pane = resolve_target(&pane)?;
             let own = cmux::own_surface_id()?;
             let from = sender_id(None);
             let envelope = Envelope::new(&from, MessageKind::Ping);
