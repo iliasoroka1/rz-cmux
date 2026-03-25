@@ -17,6 +17,9 @@ enum BrowserCmd {
         surface: Option<String>,
     },
     /// Navigate an existing browser surface to a URL.
+    ///
+    /// Alias: `goto` (Playwright-style)
+    #[command(alias = "goto")]
     Navigate {
         /// Browser surface ID.
         surface: String,
@@ -38,6 +41,9 @@ enum BrowserCmd {
         output: Option<String>,
     },
     /// Get a DOM/accessibility tree snapshot (text representation).
+    ///
+    /// Alias: `content` (Playwright-style: page.content())
+    #[command(alias = "content")]
     Snapshot {
         /// Browser surface ID.
         surface: String,
@@ -46,6 +52,9 @@ enum BrowserCmd {
         interactive: bool,
     },
     /// Execute JavaScript in the browser and print the result.
+    ///
+    /// Alias: `exec` (familiar execute-style)
+    #[command(alias = "exec")]
     Eval {
         /// Browser surface ID.
         surface: String,
@@ -74,6 +83,9 @@ enum BrowserCmd {
         text: String,
     },
     /// Wait for the page to finish loading.
+    ///
+    /// Alias: `waitfor` (Playwright-style: waitForLoadState)
+    #[command(alias = "waitfor")]
     Wait {
         /// Browser surface ID.
         surface: String,
@@ -109,10 +121,11 @@ enum WorkspaceCmd {
 /// running in cmux surfaces. No files, no focus switching — just surface IDs.
 ///
 /// Quick start:
-///   rz spawn claude                     # start an agent, get its surface ID
+///   rz run claude                       # start an agent (alias: spawn)
 ///   rz send <surface_id> "do something" # send it a message
-///   rz list                             # see all running surfaces
-///   rz dump <surface_id>                # read what it's been doing
+///   rz ps                               # see all running surfaces (alias: list)
+///   rz logs <surface_id>                # read what it's been doing (alias: dump)
+///   rz kill <surface_id>                # close a surface (alias: close)
 ///   rz broadcast "status update"        # message all agents
 #[derive(Parser)]
 #[command(name = "rz", version, about, long_about)]
@@ -143,10 +156,14 @@ enum Cmd {
     /// Creates a new cmux surface, waits for it to start, then sends
     /// bootstrap instructions (identity, rz usage, active peers).
     ///
+    /// Alias: `rz run` (docker-style)
+    ///
     /// Examples:
     ///   rz spawn claude
+    ///   rz run claude                        # same thing
     ///   rz spawn --name researcher -p "find all TODOs" claude
     ///   rz spawn --no-bootstrap python agent.py
+    #[command(alias = "run")]
     Spawn {
         /// Command to run.
         command: String,
@@ -207,6 +224,9 @@ enum Cmd {
     },
 
     /// List all surfaces with their info and status.
+    ///
+    /// Alias: `rz ps` (docker-style)
+    #[command(alias = "ps")]
     List,
 
     /// Show a summary of the session: surface counts and per-surface status.
@@ -216,9 +236,12 @@ enum Cmd {
 
     /// Dump a surface's scrollback to stdout.
     ///
+    /// Alias: `rz logs` (docker-style)
+    ///
     /// Examples:
     ///   rz dump <surface_id>              # full scrollback
-    ///   rz dump <surface_id> --last 50    # last 50 lines only
+    ///   rz logs <surface_id> --last 50    # last 50 lines only
+    #[command(alias = "logs")]
     Dump {
         /// Target surface ID.
         pane: String,
@@ -244,6 +267,9 @@ enum Cmd {
     },
 
     /// Close a surface.
+    ///
+    /// Alias: `rz kill` (docker-style)
+    #[command(alias = "kill")]
     Close {
         /// Target surface ID.
         pane: String,

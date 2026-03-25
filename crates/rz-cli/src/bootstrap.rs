@@ -72,7 +72,7 @@ You have `rz` at `{rz_path}`. Your surface ID is `{surface_id}`.
 ```bash
 # --- Identity & discovery ---
 {rz_path} id                              # print your own surface ID
-{rz_path} list                            # all active surfaces (ID, title, type)
+{rz_path} ps                              # all active surfaces (alias: list)
 {rz_path} status                          # surface count + message counts per agent
 {rz_path} ping <surface_id>               # check if an agent is alive, measure RTT
 
@@ -80,17 +80,17 @@ You have `rz` at `{rz_path}`. Your surface ID is `{surface_id}`.
 {rz_path} send <surface_id> "message"     # send a structured @@RZ: message
 {rz_path} send --wait 30 <surface_id> "?" # block until the agent replies (30s timeout)
 {rz_path} send --ref <msg_id> <surface_id> "reply"  # reply to a specific message (threading)
-{rz_path} broadcast "message"            # send to all other agents at once
+{rz_path} broadcast "message"             # send to all other agents at once
 
 # --- Reading output ---
-{rz_path} dump <surface_id> --last 50    # read raw terminal scrollback (last 50 lines)
+{rz_path} logs <surface_id> --last 50    # read raw terminal scrollback (alias: dump)
 {rz_path} log <surface_id>               # show only @@RZ: protocol messages
 {rz_path} log <surface_id> --last 10     # last 10 protocol messages
 
 # --- Spawning sub-agents ---
-{rz_path} spawn claude --name worker -p "do X"   # spawn agent, send it a task
-{rz_path} spawn --no-bootstrap claude            # spawn without bootstrap (bare shell)
-{rz_path} close <surface_id>                     # close a surface when done
+{rz_path} run claude --name worker -p "do X"   # spawn agent, send it a task (alias: spawn)
+{rz_path} run --no-bootstrap claude            # spawn without bootstrap (bare shell)
+{rz_path} kill <surface_id>                    # close a surface when done (alias: close)
 
 # --- Timers (no polling loops) ---
 {rz_path} timer 60 "check build"         # wake yourself up after 60s with a Timer message
@@ -139,20 +139,20 @@ You can open and control a real browser. Every browser command targets a
 # Open a URL — returns a browser surface ID
 B=$({rz_path} browser open https://example.com)
 
-# Wait for the page to finish loading (always do this after open/navigate)
-{rz_path} browser wait $B
+# Wait for the page to finish loading (always do this after open/goto)
+{rz_path} browser waitfor $B              # alias: wait
 
 # Navigate to a new URL (--wait blocks until loaded)
-{rz_path} browser navigate $B https://other.com --wait
+{rz_path} browser goto $B https://other.com --wait   # alias: navigate
 
 # Take a screenshot and save as PNG
 {rz_path} browser screenshot $B --output /tmp/page.png
 
 # Get the page source / DOM snapshot
-{rz_path} browser snapshot $B
+{rz_path} browser content $B             # alias: snapshot
 
 # Run JavaScript and get the result
-{rz_path} browser eval $B "document.title"
+{rz_path} browser exec $B "document.title"   # alias: eval
 
 # Click an element by CSS selector
 {rz_path} browser click $B "button.submit"
