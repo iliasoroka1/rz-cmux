@@ -106,7 +106,18 @@ fn v2_call(method: &str, params: Value) -> Result<Value> {
             .get("message")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown error");
-        bail!("cmux error: {}", msg);
+        let msg = if msg == "A JavaScript exception occurred" {
+            if method.contains("eval") {
+                "JavaScript error (check script syntax or that surface is still loaded)".to_string()
+            } else if method.contains("click") || method.contains("fill") {
+                "Element not found or surface not ready".to_string()
+            } else {
+                msg.to_string()
+            }
+        } else {
+            msg.to_string()
+        };
+        bail!("cmux error [{}]: {}", method, msg);
     }
 
     Ok(resp.get("result").cloned().unwrap_or(Value::Null))
@@ -362,6 +373,30 @@ pub fn browser_click(surface_id: &str, selector: &str) -> Result<()> {
 pub fn browser_fill(surface_id: &str, selector: &str, text: &str) -> Result<()> {
     v2_call("browser.fill", json!({ "surface_id": surface_id, "selector": selector, "text": text }))?;
     Ok(())
+}
+
+/// Wait for page to finish loading (polls document.readyState).
+pub fn browser_wait(surface_id: &str, timeout_secs: u64) -> Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    loop {
+        if std::time::Instant::now() >= deadline {
+            bail!("timeout: page did not finish loading within {}s", timeout_secs);
+        }
+        let result = v2_call("browser.eval", serde_json::json!({
+            "surface_id": surface_id,
+            "script": "document.readyState"
+        }));
+        match result {
+            Ok(val) => {
+                let state = val.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                if state == "complete" {
+                    return Ok(());
+                }
+            }
+            Err(_) => {} // page mid-navigation, keep waiting
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
 }
 
 /// Get current URL of a browser surface.
