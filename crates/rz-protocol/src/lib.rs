@@ -17,6 +17,8 @@ pub struct Envelope {
     pub id: String,
     pub from: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
     pub kind: MessageKind,
     pub ts: u64,
@@ -31,6 +33,10 @@ pub enum MessageKind {
     Pong,
     Error { message: String },
     Timer { label: String },
+    ToolCall { name: String, args: serde_json::Value, call_id: String },
+    ToolResult { call_id: String, result: String, is_error: bool },
+    Delegate { task: String, context: String },
+    Status { state: String, detail: String },
 }
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -44,11 +50,18 @@ impl Envelope {
             .as_millis() as u64;
         Self {
             id: format!("{:04x}{:04x}", (ts & 0xFFFF) as u16, seq),
+            to: None,
             r#ref: None,
             from: from.into(),
             kind,
             ts,
         }
+    }
+
+    /// Builder: set `to` for directed messaging.
+    pub fn with_to(mut self, t: impl Into<String>) -> Self {
+        self.to = Some(t.into());
+        self
     }
 
     /// Builder: set `ref` for threading.

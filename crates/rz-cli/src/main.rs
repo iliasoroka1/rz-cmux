@@ -563,7 +563,7 @@ _Fill in the session's primary objective._
                 let mut envelope = Envelope::new(
                     sender_id(from.as_deref()),
                     MessageKind::Chat { text: message },
-                );
+                ).with_to(&pane);
                 if let Some(r) = r#ref {
                     envelope = envelope.with_ref(r);
                 }
@@ -582,7 +582,7 @@ _Fill in the session's primary objective._
             let envelope = Envelope::new(
                 &from,
                 MessageKind::Chat { text: message },
-            );
+            ).with_to(&pane);
             let msg_id = envelope.id.clone();
             cmux::send(&pane, &envelope.encode()?)?;
             wait_for_reply(&msg_id, timeout)?;

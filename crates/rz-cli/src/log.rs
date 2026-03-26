@@ -58,6 +58,19 @@ pub fn format_message(envelope: &Envelope) -> String {
         MessageKind::Timer { label } => {
             return format!("[{h:02}:{m:02}:{s:02}] {}> timer: {label}", envelope.from);
         }
+        MessageKind::ToolCall { name, call_id, .. } => {
+            return format!("[{h:02}:{m:02}:{s:02}] {}> tool_call: {name} ({call_id})", envelope.from);
+        }
+        MessageKind::ToolResult { call_id, result, is_error } => {
+            let tag = if *is_error { "tool_error" } else { "tool_result" };
+            return format!("[{h:02}:{m:02}:{s:02}] {}> {tag}: {result} ({call_id})", envelope.from);
+        }
+        MessageKind::Delegate { task, .. } => {
+            return format!("[{h:02}:{m:02}:{s:02}] {}> delegate: {task}", envelope.from);
+        }
+        MessageKind::Status { state, detail } => {
+            return format!("[{h:02}:{m:02}:{s:02}] {}> status: {state} — {detail}", envelope.from);
+        }
     };
 
     format!("[{h:02}:{m:02}:{s:02}] {}> {text}", envelope.from)
