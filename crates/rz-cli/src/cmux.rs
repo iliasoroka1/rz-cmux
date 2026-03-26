@@ -124,11 +124,17 @@ fn v2_call(method: &str, params: Value) -> Result<Value> {
 }
 
 /// Send text to a surface (terminal pane) and submit with Enter.
+///
+/// A short delay between paste and Enter is critical: TUI apps like
+/// Claude Code need time to process pasted text before the Enter key
+/// can trigger submission.
 pub fn send(surface_id: &str, text: &str) -> Result<()> {
     v2_call("surface.send_text", json!({
         "surface_id": surface_id,
         "text": text,
     }))?;
+    // Let the TUI process the pasted text before pressing Enter.
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // surface.send_text pastes but doesn't submit — follow with Enter
     v2_call("surface.send_key", json!({
         "surface_id": surface_id,
