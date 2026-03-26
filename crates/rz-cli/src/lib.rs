@@ -1,11 +1,15 @@
-//! rz — inter-agent communication over cmux.
+//! rz — universal inter-agent communication.
 //!
-//! Uses cmux's v2 JSON-RPC socket API for direct surface-to-surface
-//! messaging. No files, no focus switching.
+//! Supports multiple transports: cmux (terminal), file mailbox,
+//! and HTTP. Agents register in a shared registry and messages
+//! are routed via the appropriate transport.
 
 pub mod bootstrap;
 pub mod cmux;
 pub mod log;
+pub mod mailbox;
+pub mod registry;
 pub mod status;
+pub mod transport;
 
 pub use rz_cmux_protocol::{Envelope, MessageKind, SENTINEL};

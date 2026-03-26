@@ -374,6 +374,56 @@ enum Cmd {
     ///
     /// Displays the hierarchical structure of the cmux session.
     Tree,
+
+    /// Register this agent in the universal registry.
+    ///
+    /// Makes this agent discoverable by other agents via `rz ps`.
+    /// Transport determines how messages are delivered.
+    ///
+    /// Examples:
+    ///   rz register --name myagent --transport cmux --endpoint <surface_id>
+    ///   rz register --name worker --transport file
+    ///   rz register --name api --transport http --endpoint http://localhost:7070
+    Register {
+        /// Agent name.
+        #[arg(long)]
+        name: String,
+        /// Transport type: cmux, file, http.
+        #[arg(long, default_value = "file")]
+        transport: String,
+        /// Transport endpoint (surface ID, URL, etc). Defaults to agent name for file transport.
+        #[arg(long)]
+        endpoint: Option<String>,
+        /// Capabilities (comma-separated).
+        #[arg(long)]
+        caps: Option<String>,
+    },
+
+    /// Remove an agent from the registry.
+    Deregister {
+        /// Agent name to remove.
+        name: String,
+    },
+
+    /// Receive pending messages from file mailbox.
+    ///
+    /// Reads and removes messages from ~/.rz/mailboxes/<name>/inbox/.
+    /// Prints each as an @@RZ: line.
+    ///
+    /// Examples:
+    ///   rz recv myagent
+    ///   rz recv myagent --one     # pop just the oldest message
+    ///   rz recv myagent --count   # just show count, don't consume
+    Recv {
+        /// Agent name (mailbox to read from).
+        name: String,
+        /// Pop only the oldest message.
+        #[arg(long)]
+        one: bool,
+        /// Just print count without consuming.
+        #[arg(long)]
+        count: bool,
+    },
 }
 
 /// Path to the name→UUID registry file.
@@ -404,10 +454,16 @@ fn resolve_target(target: &str) -> Result<String> {
     if target.contains('-') {
         return Ok(target.to_string());
     }
+    // Check cmux names first (fast path for terminal agents)
     let names = load_names();
-    names.get(target)
-        .cloned()
-        .ok_or_else(|| eyre::eyre!("unknown agent name '{}' — use a UUID or a name from `rz run --name`", target))
+    if let Some(id) = names.get(target) {
+        return Ok(id.clone());
+    }
+    // Fall back to universal registry
+    if let Ok(Some(entry)) = rz_cli::registry::lookup(target) {
+        return Ok(entry.endpoint);
+    }
+    Err(eyre::eyre!("unknown agent '{}' — use a UUID, a name from `rz run --name`, or `rz register`", target))
 }
 
 fn rz_path() -> String {
@@ -839,6 +895,54 @@ _Fill in the session's primary objective._
         Cmd::Tree => {
             let result = cmux::system_tree()?;
             println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+
+        Cmd::Register { name, transport, endpoint, caps } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let ep = endpoint.unwrap_or_else(|| name.clone());
+            let capabilities = caps
+                .map(|c| c.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            let id = cmux::own_surface_id().unwrap_or_else(|_| name.clone());
+            let entry = rz_cli::registry::AgentEntry {
+                name: name.clone(),
+                id,
+                transport,
+                endpoint: ep,
+                capabilities,
+                registered_at: now,
+                last_seen: now,
+            };
+            rz_cli::registry::register(entry)?;
+            println!("registered: {}", name);
+        }
+
+        Cmd::Deregister { name } => {
+            rz_cli::registry::deregister(&name)?;
+            println!("deregistered: {}", name);
+        }
+
+        Cmd::Recv { name, one, count } => {
+            if count {
+                let n = rz_cli::mailbox::count(&name)?;
+                println!("{}", n);
+            } else if one {
+                match rz_cli::mailbox::receive_one(&name)? {
+                    Some(env) => println!("{}", env.encode()?),
+                    None => std::process::exit(1), // no messages
+                }
+            } else {
+                let messages = rz_cli::mailbox::receive(&name)?;
+                if messages.is_empty() {
+                    std::process::exit(1);
+                }
+                for env in &messages {
+                    println!("{}", env.encode()?);
+                }
+            }
         }
     }
 
