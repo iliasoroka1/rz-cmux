@@ -405,6 +405,23 @@ enum Cmd {
         name: String,
     },
 
+    /// Listen for messages on a NATS subject for a named agent.
+    ///
+    /// Subscribes to the agent's NATS subject and delivers incoming
+    /// messages via the specified method. Blocks until interrupted.
+    ///
+    /// Examples:
+    ///   rz listen myagent
+    ///   rz listen myagent --deliver file
+    ///   rz listen myagent --deliver cmux:<surface_id>
+    Listen {
+        /// Agent name to listen for.
+        name: String,
+        /// How to deliver: 'stdout' (default), 'file', or 'cmux:<surface_id>'.
+        #[arg(long, default_value = "stdout")]
+        deliver: String,
+    },
+
     /// Receive pending messages from file mailbox.
     ///
     /// Reads and removes messages from ~/.rz/mailboxes/<name>/inbox/.
@@ -609,26 +626,39 @@ _Fill in the session's primary objective._
         }
 
         Cmd::Send { pane, message, raw, from, r#ref, wait } => {
-            let pane = resolve_target(&pane)?;
-            if raw {
-                if wait.is_some() {
-                    bail!("--wait requires protocol mode (cannot use with --raw)");
-                }
-                cmux::send(&pane, &message)?;
-            } else {
-                let mut envelope = Envelope::new(
-                    sender_id(from.as_deref()),
-                    MessageKind::Chat { text: message },
-                ).with_to(&pane);
-                if let Some(r) = r#ref {
-                    envelope = envelope.with_ref(r);
-                }
-                let msg_id = envelope.id.clone();
-                cmux::send(&pane, &envelope.encode()?)?;
+            match resolve_target(&pane) {
+                Ok(resolved) => {
+                    if raw {
+                        if wait.is_some() {
+                            bail!("--wait requires protocol mode (cannot use with --raw)");
+                        }
+                        cmux::send(&resolved, &message)?;
+                    } else {
+                        let mut envelope = Envelope::new(
+                            sender_id(from.as_deref()),
+                            MessageKind::Chat { text: message },
+                        ).with_to(&resolved);
+                        if let Some(r) = r#ref {
+                            envelope = envelope.with_ref(r);
+                        }
+                        let msg_id = envelope.id.clone();
+                        cmux::send(&resolved, &envelope.encode()?)?;
 
-                if let Some(timeout_secs) = wait {
-                    wait_for_reply(&msg_id, timeout_secs)?;
+                        if let Some(timeout_secs) = wait {
+                            wait_for_reply(&msg_id, timeout_secs)?;
+                        }
+                    }
                 }
+                Err(_) if std::env::var("RZ_HUB").is_ok() && !pane.contains('-') => {
+                    // Target not found locally but RZ_HUB is set and target
+                    // looks like a name (no dashes) — try NATS as fallback.
+                    let envelope = Envelope::new(
+                        sender_id(from.as_deref()),
+                        MessageKind::Chat { text: message },
+                    ).with_to(&pane);
+                    rz_cli::nats_hub::publish(&pane, &envelope)?;
+                }
+                Err(e) => return Err(e),
             }
         }
 
@@ -923,6 +953,10 @@ _Fill in the session's primary objective._
         Cmd::Deregister { name } => {
             rz_cli::registry::deregister(&name)?;
             println!("deregistered: {}", name);
+        }
+
+        Cmd::Listen { name, deliver } => {
+            rz_cli::nats_hub::subscribe_and_deliver(&name, &deliver)?;
         }
 
         Cmd::Recv { name, one, count } => {
