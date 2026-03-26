@@ -1,43 +1,24 @@
-# rz-cmux
+# rz
 
-**Run a swarm of AI agents inside your terminal — all talking to each other natively.**
+**Universal messaging for AI agents — terminal, HTTP, or anywhere.**
 
-rz-cmux gives every [cmux](https://github.com/manaflow-ai/cmux) terminal session a native inter-agent messaging layer. Spawn Claude (or any agent) into a split, send it work, read its output, wait for replies, broadcast to the whole swarm — all from a single `rz` binary that any agent can call itself.
+rz gives AI agents a native way to find each other and communicate, regardless of where they run. Spawn Claude into a terminal split, register an HTTP agent, or drop messages into a file mailbox — `rz send peer "hello"` works the same way everywhere.
 
-No servers. No sidecars. No configuration. If you're inside cmux, it just works.
-
-**Fork of [rz](https://github.com/HodlOg/rz)** ([crates.io](https://crates.io/crates/rz-cli)) by [@HodlOg](https://github.com/HodlOg) — the original Zellij inter-agent messaging tool. This fork replaces the Zellij transport with cmux's v2 JSON-RPC socket API and adds cmux-native features: browser automation, notifications, and workspace management. The `@@RZ:` wire protocol is unchanged — agents communicate identically regardless of multiplexer.
+**Fork of [rz](https://github.com/HodlOg/rz)** by [@HodlOg](https://github.com/HodlOg). The `@@RZ:` wire protocol is unchanged from the original — this fork adds transport-agnostic routing, a universal agent registry, and file-based mailboxes alongside the original cmux terminal support.
 
 ---
 
-## Why rz-cmux
+## Why rz
 
-Modern AI coding workflows involve more than one agent. You might have a researcher, a coder, a reviewer, and a QA agent all running in parallel. Without a messaging layer they're blind to each other — duplicating work, stepping on each other's files, unable to hand off tasks.
+AI coding agents need to talk to each other. A lead agent delegates to coders, reviewers report back, CI bots notify the team. But agents run in different environments — terminals, HTTP servers, IDE extensions, CI pipelines — and can't natively discover or message each other.
 
-rz-cmux solves this with one small binary:
+rz solves this with one binary:
 
-- **Agents can spawn agents.** A lead agent can delegate sub-tasks to helpers, wait for their replies, and report back — all autonomously.
-- **Structured messaging with threading.** Every message has an ID. Agents reply to specific messages with `--ref`, building proper conversation threads across splits.
-- **Shared workspace.** A `goals.md`, `agents.md`, and `context.md` give the whole swarm a shared memory. Agents write discoveries, claim files, and coordinate without collision.
-- **Full situational awareness.** Any agent can read another agent's terminal scrollback with `rz dump`, see who's active with `rz status`, and catch up on protocol messages with `rz log`.
-- **Browser automation built in.** Open URLs in cmux browser splits, take screenshots, run JavaScript, click elements, fill forms — all scriptable from any agent.
-- **Timers for autonomous operation.** Set a timer and get woken up when it fires. No polling loops needed.
-
-The result: a team of agents that coordinates, delegates, and delivers — living entirely inside your terminal.
-
----
-
-## What it does
-
-- Spawn Claude (or any agent) into a new cmux split with a full bootstrap — identity, peers, workspace, communication instructions
-- Send structured `@@RZ:` messages between surfaces with threading and reply-waiting
-- Broadcast to all active agents at once
-- Read another agent's terminal scrollback
-- Ping surfaces, measure round-trip latency
-- Open browser splits, take screenshots, run JavaScript, click and fill forms
-- Send macOS notifications when work completes
-- Create and manage cmux workspaces
-- Coordinate entire swarms with a shared workspace (`goals.md`, `agents.md`, `context.md`)
+- **Universal registry.** Agents register once (`rz register --name coder --transport file`). Any agent can find any other with `rz ps`.
+- **Pluggable transports.** Messages route through cmux (terminal paste), file mailbox (universal), or HTTP (network agents). The sender doesn't need to know — `rz send coder "do X"` just works.
+- **Structured protocol.** Every message is an `@@RZ:` JSON envelope with ID, sender, recipient, threading, and typed payloads (chat, tool calls, delegation, status).
+- **File mailbox.** The universal fallback — works everywhere, survives crashes, debuggable with `ls` and `cat`. No daemon needed.
+- **Agent spawning.** `rz run claude --name worker -p "do X"` spawns a new agent with identity, peer list, and a task — all in one command.
 
 ---
 
@@ -47,7 +28,7 @@ The result: a team of agents that coordinates, delegates, and delivers — livin
 cargo install rz-cmux
 ```
 
-Or build from source:
+Or from source:
 
 ```bash
 git clone https://github.com/iliasoroka1/rz-cmux
@@ -56,105 +37,87 @@ cargo build --release
 cp target/release/rz ~/.local/bin/rz
 ```
 
-Requires [cmux](https://github.com/manaflow-ai/cmux) running with `CMUX_SOCKET_PATH` and `CMUX_SURFACE_ID` set (automatically available inside cmux terminals).
-
 ---
 
 ## Quick start
 
-You start the swarm. Your agents do the rest.
+### Terminal agents (cmux)
 
 ```bash
-# Spawn a lead agent — it gets a full bootstrap and takes it from there
-rz spawn --name lead -p "refactor the auth module, spawn helpers as needed" claude --dangerously-skip-permissions
+# Spawn a team
+rz run --name lead -p "refactor auth, spawn helpers" claude --dangerously-skip-permissions
+rz run --name coder -p "implement session tokens" claude --dangerously-skip-permissions
+
+# Observe
+rz list                    # see who's alive
+rz log lead                # read lead's messages
+rz send lead "wrap up"     # intervene
 ```
 
-From that point, agents run autonomously. They spawn each other, send messages, wait for replies, read each other's scrollback, and write to the shared workspace — all using `rz` commands themselves. You can observe or intervene at any time:
+### Any agent (universal)
 
 ```bash
-rz status                          # see who's active and message counts
-rz log <surface_id>                # read protocol messages from a surface
-rz dump <surface_id> --last 50     # read raw terminal output
-rz send <surface_id> "new priority: focus on the login flow only"
-rz broadcast "wrapping up — push your changes"
+# Register agents with different transports
+rz register --name worker --transport file
+rz register --name api --transport http --endpoint http://localhost:7070
+
+# Send — rz picks the right transport automatically
+rz send worker "process this batch"
+rz send api "health check"
+
+# Receive from file mailbox
+rz recv worker             # print and consume all pending messages
+rz recv worker --one       # pop oldest message only
+rz recv worker --count     # just show how many are waiting
 ```
 
 ---
 
-## How agent coordination works
-
-When you spawn an agent with `rz spawn`, it receives a bootstrap message telling it:
-
-- Its own surface ID and name
-- Which other agents are running and their IDs
-- Where the shared workspace is (`goals.md`, `agents.md`, `context.md`)
-- How to send messages, reply with threading, broadcast, and spawn its own helpers
-
-From that point the agent is self-sufficient. It can delegate, report back, wait for replies, and spawn sub-agents — all using the same `rz` binary it was told about at startup.
-
-A typical swarm looks like this:
+## Architecture
 
 ```
-lead-agent
-├── spawns researcher  → "find all auth-related TODOs"
-├── spawns coder       → "implement the session token fix"
-└── spawns reviewer    → "review coder's diff when done"
-     └── sends rz send --wait 60 <coder> "ready for review?"
+~/.rz/
+  registry.json              # who's alive, how to reach them
+  mailboxes/
+    <agent-name>/
+      inbox/                 # one JSON file per message
+        1774488000_a1b2.json
+        1774488001_c3d4.json
+
+rz-cmux/
+├── crates/
+│   ├── rz-protocol/         # @@RZ: wire format (transport-agnostic)
+│   │   └── lib.rs           # Envelope, MessageKind, encode/decode
+│   └── rz-cli/
+│       ├── main.rs          # CLI commands
+│       ├── registry.rs      # Agent discovery (~/.rz/registry.json)
+│       ├── mailbox.rs       # File-based message store
+│       ├── transport.rs     # Pluggable delivery (cmux, file, http)
+│       ├── cmux.rs          # cmux socket client
+│       ├── bootstrap.rs     # Agent bootstrap message
+│       ├── log.rs           # @@RZ: message extraction
+│       └── status.rs        # Session status
 ```
 
-Each agent writes large outputs to the shared workspace and sends file paths via messages — keeping protocol messages short and the shared context up to date.
+### Transports
 
----
+| Transport | Delivery method | Best for |
+|---|---|---|
+| `cmux` | Paste into terminal via cmux socket | Terminal agents (Claude Code) |
+| `file` | Write JSON to `~/.rz/mailboxes/<name>/inbox/` | Universal — works everywhere |
+| `http` | POST @@RZ: envelope to URL | Network agents (tinyclaw, APIs) |
 
-## Commands
+### Message flow
 
-### Agent lifecycle
-| Command | Description |
-|---|---|
-| `rz id` | Print this surface's ID |
-| `rz spawn <cmd>` | Spawn agent in new split with bootstrap |
-| `rz close <id>` | Close a surface |
-| `rz list` | List all surfaces |
-| `rz status` | Surface counts and message counts |
-| `rz tree` | Full window/workspace/surface hierarchy |
-
-### Messaging
-| Command | Description |
-|---|---|
-| `rz send <id> "msg"` | Send `@@RZ:` envelope to a surface |
-| `rz send --raw <id> "text"` | Send plain text (no envelope) |
-| `rz send --wait 30 <id> "msg"` | Block until reply arrives |
-| `rz send --ref <msg_id> <id> "msg"` | Reply to a specific message (threading) |
-| `rz broadcast "msg"` | Send to all other surfaces |
-| `rz log <id>` | Show `@@RZ:` messages from scrollback |
-| `rz dump <id>` | Full terminal scrollback |
-| `rz ping <id>` | Ping and measure round-trip time |
-| `rz timer 30 "label"` | Self-deliver a Timer message after N seconds |
-
-### Workspace
-| Command | Description |
-|---|---|
-| `rz init` | Create shared workspace (`/tmp/rz-cmux-<id>/`) |
-| `rz dir` | Print workspace path |
-| `rz workspace create --name "research"` | New cmux workspace |
-| `rz workspace list` | List workspaces |
-
-### Browser
-| Command | Description |
-|---|---|
-| `rz browser open <url>` | Open URL in new browser split |
-| `rz browser navigate <id> <url>` | Navigate existing browser |
-| `rz browser screenshot <id>` | Screenshot (--output file.png) |
-| `rz browser snapshot <id>` | DOM/accessibility tree |
-| `rz browser eval <id> "js"` | Execute JavaScript |
-| `rz browser url <id>` | Get current URL |
-| `rz browser click <id> "selector"` | Click element |
-| `rz browser fill <id> "sel" "text"` | Fill form field |
-
-### Notifications
-| Command | Description |
-|---|---|
-| `rz notify "title"` | macOS notification via cmux |
+```
+rz send coder "implement auth"
+    │
+    ├── resolve "coder" → check cmux names → check ~/.rz/registry.json
+    │
+    ├── transport = cmux?  → paste @@RZ: envelope into terminal
+    ├── transport = file?  → write envelope to ~/.rz/mailboxes/coder/inbox/
+    └── transport = http?  → POST envelope to registered URL
+```
 
 ---
 
@@ -163,28 +126,84 @@ Each agent writes large outputs to the shared workspace and sends file paths via
 Every message is a single line: `@@RZ:<json>`
 
 ```json
-@@RZ:{"id":"a1b20000","from":"surface-uuid","kind":{"kind":"chat","body":{"text":"hello"}},"ts":1774298000000}
+{
+  "id": "a1b20000",
+  "from": "lead",
+  "to": "coder",
+  "ref": "prev-msg-id",
+  "kind": { "kind": "chat", "body": { "text": "implement auth" } },
+  "ts": 1774488000000
+}
 ```
 
-Agents receive messages pasted into their terminal input. They parse `@@RZ:` lines from their own scrollback using `rz log`. The protocol is transport-agnostic — the same envelope format works in Zellij (original rz) and cmux (this fork).
+### Message kinds
+
+| Kind | Body | Purpose |
+|---|---|---|
+| `chat` | `{text}` | General communication |
+| `hello` | `{name, pane_id}` | Agent announcement |
+| `ping` / `pong` | — | Liveness check |
+| `error` | `{message}` | Error report |
+| `timer` | `{label}` | Self-scheduled wakeup |
+| `tool_call` | `{name, args, call_id}` | Remote tool invocation |
+| `tool_result` | `{call_id, result, is_error}` | Tool response |
+| `delegate` | `{task, context}` | Task delegation |
+| `status` | `{state, detail}` | Progress update |
 
 ---
 
-## Architecture
+## Commands
 
-```
-rz-cmux
-├── crates/
-│   ├── rz-protocol/   # @@RZ: wire protocol (transport-agnostic)
-│   └── rz-cli/
-│       ├── cmux.rs    # cmux socket client (v2 JSON-RPC over Unix socket)
-│       ├── bootstrap.rs  # bootstrap message builder
-│       ├── log.rs     # extract @@RZ: messages from scrollback
-│       ├── status.rs  # surface status summary
-│       └── main.rs    # CLI entry point
-```
+### Discovery & identity
+| Command | Description |
+|---|---|
+| `rz id` | Print this surface's ID |
+| `rz list` / `rz ps` | List all surfaces and registered agents |
+| `rz status` | Surface counts and message counts |
+| `rz register --name X --transport T` | Register agent in universal registry |
+| `rz deregister X` | Remove agent from registry |
 
-The only cmux-specific code is `cmux.rs` — everything else is transport-agnostic and could be ported to any multiplexer with a socket API.
+### Messaging
+| Command | Description |
+|---|---|
+| `rz send <target> "msg"` | Send @@RZ: message (routes via registry) |
+| `rz send --ref <id> <target> "msg"` | Reply to specific message (threading) |
+| `rz send --wait 30 <target> "msg"` | Send and block for reply |
+| `rz ask <target> "msg"` | Shorthand for send + wait |
+| `rz broadcast "msg"` | Send to all agents |
+| `rz recv <name>` | Read messages from file mailbox |
+| `rz recv <name> --one` | Pop oldest message |
+| `rz recv <name> --count` | Count pending messages |
+
+### Agent lifecycle
+| Command | Description |
+|---|---|
+| `rz run <cmd> --name X -p "task"` | Spawn agent with bootstrap + task |
+| `rz close <target>` / `rz kill` | Close a surface |
+| `rz ping <target>` | Check liveness, measure RTT |
+| `rz timer 30 "label"` | Self-deliver Timer message after N seconds |
+
+### Workspace
+| Command | Description |
+|---|---|
+| `rz init` | Create shared workspace |
+| `rz dir` | Print workspace path |
+| `rz workspace create` | New cmux workspace |
+
+### Observation
+| Command | Description |
+|---|---|
+| `rz log <target>` | Show @@RZ: protocol messages |
+| `rz dump <target>` | Full terminal scrollback |
+| `rz gather <id1> <id2>` | Collect last message from each agent |
+
+### Browser (cmux only)
+| Command | Description |
+|---|---|
+| `rz browser open <url>` | Open browser split |
+| `rz browser screenshot <id>` | Take screenshot |
+| `rz browser eval <id> "js"` | Run JavaScript |
+| `rz browser click <id> "sel"` | Click element |
 
 ---
 
